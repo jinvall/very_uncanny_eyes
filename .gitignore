@@ -18,6 +18,9 @@ Testing/
 *.exe
 *.out
 
+# Nested project checkout used as a local helper; keep it out of the main repo
+Uncanny_Eyes/
+
 # Distribution and packaging artifacts
 appimage/
 dist/

@@ -45,16 +45,16 @@ from gi.repository import GLib, Gst, GstRtspServer  # noqa: E402
 # Configuration
 # --------------------------------------------------------------------------- #
 
-WIDTH = 1280
-HEIGHT = 720
+WIDTH = 1920
+HEIGHT = 1080
 DEFAULT_PORT = 8554
 MOUNT = "/eyes"
 DISPLAY = os.environ.get("DISPLAY", ":0")
 
 # X11 window geometry we require for the eyes window, used to filter out the
 # terminal/editor/VS Code windows that also match the process name.
-EYE_WINDOW_WIDTH = 1280
-EYE_WINDOW_HEIGHT = 720
+EYE_WINDOW_WIDTH = 1920
+EYE_WINDOW_HEIGHT = 1080
 
 # WM_CLASS owner of the SDL window. Preferred over the title because the title
 # is also present on unrelated windows in some window managers.

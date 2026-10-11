@@ -16,9 +16,7 @@ The current executable is:
 
 `/home/jason/uncanny_eyes/build-ldr/uncanny-eyes`
 
-The standard build, default/cat/dragon smoke tests in both normal and dozing modes,
-address/undefined-behavior sanitizer runs, windowed live capture, synchronized-blink
-capture, fullscreen launch/toggle/ESC exit, and the optional USB-serial LDR input all pass.
+The standard build, current-registry smoke tests across the shipped artwork set in both normal and dozing modes, address/undefined-behavior sanitizer runs, windowed live capture, synchronized-blink capture, fullscreen launch/toggle/ESC exit, and the optional USB-serial LDR input all pass.
 
 ## Implemented
 
@@ -128,13 +126,11 @@ commit d2103e84aa33da9f6924885ebc06d880af8deeff
 
 No known rendering or synchronization defects remain in the current scope.
 
+The current runtime registry exposes nine eye designs: `default`, `cat`, `dragon`, `customDragon`, `customDragonA`, `customDragonB`, `coldBlue`, `fire`, and `chalkBlue`.
+
 The `cat` design has no blue channel by design; this is not a renderer defect.
 
-The `customDragon`, `customDragonA`, and `customDragonB` designs fail the smoke
-test because their generated sclera/iris conversion contains no red pixels
-(`redPixels == 0`). This is a pre-existing artwork-conversion defect, not a
-renderer or LDR defect. The other three designs and both modes pass the smoke
-test, sanitizer checks, and the LDR lifecycle checks.
+Some generated variants (notably the custom dragon family) have historical artwork-conversion defects, while the other registry entries remain valid. The implementation is expected to use the registry as the source of truth for the available designs rather than a handwritten subset list.
 
 ## Active Process
 

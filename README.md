@@ -25,12 +25,27 @@ cmake --build build --parallel
 ./build/uncanny-eyes
 ```
 
-The default design is the upstream multicolor `defaultEye` artwork. Use the flat cartoon cat artwork, the original dragon artwork, or the custom dragon artwork explicitly with:
+The compiled eye registry currently exposes these designs:
+
+- `default`
+- `cat`
+- `dragon`
+- `customDragon`
+- `customDragonA`
+- `customDragonB`
+- `coldBlue`
+- `fire`
+- `chalkBlue`
+
+The default design is the upstream multicolor `defaultEye` artwork. Examples of common explicit selections:
 
 ```sh
+./build/uncanny-eyes --design default
 ./build/uncanny-eyes --design cat
 ./build/uncanny-eyes --design dragon --mode dozing
 ./build/uncanny-eyes --design customDragon --mode dozing
+./build/uncanny-eyes --design coldBlue
+./build/uncanny-eyes --design fire
 ```
 
 Dozing dragon mode uses a slow shared breathing cycle, mostly closed eyelids, subtle gaze drift, and synchronized blinks.
@@ -50,7 +65,7 @@ in `src/main.cpp`:
 For RTSP streaming, use `--borderless` to remove window decorations:
 
 ```sh
-./build/uncanny-eyes --width 1280 --height 720 --borderless --background 0,0,0
+./build/uncanny-eyes --width 1920 --height 1080 --borderless --background 0,0,0
 ```
 
 ## Run fullscreen
@@ -59,18 +74,45 @@ For RTSP streaming, use `--borderless` to remove window decorations:
 ./build/uncanny-eyes --fullscreen
 ```
 
-Press `Esc` to exit. Press `F` to toggle fullscreen while running. Press `D` to toggle dozing mode.
+Press `Esc` to exit. Press `F` to toggle fullscreen while running. Press `D` to
+cycle through every animation mode (`normal` → `dozing` → `suspicious` →
+`angry`).
 
 Useful options:
 
 ```text
 --width PIXELS --height PIXELS --scale FACTOR --fps RATE
---background R,G,B --design NAME --mode MODE --smoke-test --list-designs
+--background R,G,B --design NAME --mode MODE --smoke-test
+--stream-mode            lock to 1920x1080 borderless black output
+--iris-type NAME         mammalian | feline | reptilian | goat
+--pupil-type NAME        round | slit | horizontal-slit
+--realism NAME           stylized | realistic | hyperreal
+--expression-intensity F overall expression strength, 0..2
+--autonomous-iris        let the pupil drift with no light sensor (off by default)
+--ldr-sensitivity F      light-response sensitivity, 0..4
+--list-designs --list-modes --list-iris-types --list-pupil-types --list-realism
 ```
 
-Available designs: `default`, `cat`, `dragon`, `customDragon`
+Available designs: `default`, `cat`, `dragon`, `customDragon`, `customDragonA`, `customDragonB`, `testy`, `coldBlue`, `fire`, `chalkBlue`
 
-The smoke test renders three frames for both eyes and verifies that red, green, and blue channels are present:
+### The pupil only moves when something moves it
+
+The pupil is **still** by default. There is no reason for it to change size when
+no light sensor is attached, so nothing random drives it. The pupil moves only
+when something has a reason to move it:
+
+- **the mode** — dozing dilates the pupil steadily as drowsiness builds
+- **the LDR** — bright constricts, dark dilates, through a physiological
+  response model with deadband, hysteresis and adaptation
+- **`--autonomous-iris`** — opt in to a slow self-driven drift
+
+If you want the pupil to roam on its own, that is the flag for it. Without it,
+the resting pupil holds.
+
+The smoke test renders both eyes and verifies renderer purity, shared-gaze
+mirroring, blink synchronisation and residue, animator determinism, that all
+four modes stay in bounds and synchronized, and that the palette is sane. It
+runs for every design and mode combination:
 
 ```sh
 ./build/uncanny-eyes --smoke-test
@@ -170,8 +212,8 @@ sudo apt install -y gstreamer1.0-rtsp libgstrtspserver-1.0-0 \
 Or manually:
 
 ```sh
-# 1. Start the eyes app (windowed, 1280x720)
-DISPLAY=:0 ./build/uncanny-eyes --width 1280 --height 720 --background 0,0,0 &
+# 1. Start the eyes app (windowed, 1920x1080)
+DISPLAY=:0 ./build/uncanny-eyes --width 1920 --height 1080 --background 0,0,0 &
 
 # 2. Start the RTSP server (auto-detects the eyes window)
 DISPLAY=:0 python3 rtsp_server.py
@@ -188,7 +230,7 @@ On the remote device (e.g., Google TV):
 
 1. Open VLC
 2. Network Stream → `rtsp://10.0.0.147:8554/eyes`
-3. The stream is 1280x720 @ 30fps H.264
+3. The stream is 1920x1080 @ 30fps H.264
 
 ### Manual window ID
 
@@ -205,7 +247,7 @@ DISPLAY=:0 python3 rtsp_server.py 50331658
 ### How it works
 
 - `ximagesrc` with `xid` property captures **only** the specified X11 window
-- `videoscale` forces exact 1280x720 output (H.264 requires even dimensions)
+- `videoscale` forces exact 1920x1080 output (H.264 requires even dimensions)
 - `x264enc` encodes to H.264 with zero-latency tuning
 - `rtph264pay` packages as RTP for RTSP transport
 - The GStreamer RTSP server (`GstRtspServer`) serves on port 8554, mount `/eyes`

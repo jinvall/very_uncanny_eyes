@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="449.66199"
+   height="697.4035"
+   viewBox="0 0 449.66199 697.4035"
+   version="1.1"
+   id="svg3783"
+   sodipodi:docname="pupil refrence.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs3787">
+    <rect
+       x="-182.6945"
+       y="-114.1124"
+       width="699.82361"
+       height="325.70258"
+       id="rect5682" />
+    <rect
+       x="-110.05879"
+       y="-59.411198"
+       width="567.09216"
+       height="256.94016"
+       id="rect5676" />
+    <rect
+       x="-40.945873"
+       y="-66.323006"
+       width="249.00626"
+       height="748.7998"
+       id="rect5670" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview3785"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="0.44155929"
+     inkscape:cx="228.73486"
+     inkscape:cy="478.98438"
+     inkscape:window-width="1920"
+     inkscape:window-height="1043"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3783" />
+  <title
+     id="title3775">Orbit Eye</title>
+  <text
+     xml:space="preserve"
+     style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;text-anchor:middle;opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+     x="192.12225"
+     y="136.57176"
+     id="text5590"><tspan
+       sodipodi:role="line"
+       id="tspan5588"
+       x="192.12225"
+       y="136.57176" /></text>
+  <g
+     id="g5745"
+     transform="translate(-22.80537)">
+    <g
+       id="g5695"
+       transform="translate(22.805371)">
+      <g
+         id="g5524">
+        <circle
+           cx="100"
+           cy="100"
+           r="99.52607"
+           fill="#ffffff"
+           id="circle3777"
+           style="stroke:#000000;stroke-width:0.947862" />
+        <circle
+           cx="100"
+           cy="100"
+           r="56.5"
+           fill="#c9c9f0"
+           id="circle3779"
+           style="stroke-width:0.882812" />
+        <circle
+           cx="100"
+           cy="100"
+           r="8.1795921"
+           fill="#211d47"
+           id="circle3781"
+           style="stroke:#1a1a1a;stroke-width:0.340816" />
+      </g>
+      <text
+         xml:space="preserve"
+         style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;text-anchor:middle;opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+         x="304.2392"
+         y="60.938637"
+         id="text5644"><tspan
+           sodipodi:role="line"
+           id="tspan5642"
+           x="304.2392"
+           y="60.938637">2mm pupil</tspan><tspan
+           sodipodi:role="line"
+           x="304.2392"
+           y="114.27201"
+           id="tspan5646">16.7px</tspan><tspan
+           sodipodi:role="line"
+           x="304.2392"
+           y="167.60538"
+           id="tspan5648">0%dialation</tspan><tspan
+           sodipodi:role="line"
+           x="304.2392"
+           y="220.93875"
+           id="tspan5650" /></text>
+    </g>
+    <g
+       id="g5705"
+       transform="translate(22.805371,5.8709313)">
+      <g
+         id="g5529"
+         transform="translate(-220,209.12907)">
+        <circle
+           cx="320"
+           cy="100"
+           r="99.52607"
+           fill="#ffffff"
+           id="circle5507"
+           style="stroke:#000000;stroke-width:0.947862" />
+        <circle
+           cx="320"
+           cy="100"
+           r="56.5"
+           fill="#c9c9f0"
+           id="circle5509"
+           style="stroke-width:0.882812" />
+        <circle
+           cx="320"
+           cy="100"
+           r="22.530613"
+           fill="#211d47"
+           id="circle5511"
+           style="stroke:#1a1a1a;stroke-width:0.938776" />
+      </g>
+      <text
+         xml:space="preserve"
+         style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;text-anchor:middle;opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+         x="326.8739"
+         y="270.17438"
+         id="text5654"><tspan
+           sodipodi:role="line"
+           id="tspan5652"
+           x="326.8739"
+           y="270.17438">5.52mm pupil</tspan><tspan
+           sodipodi:role="line"
+           x="326.8739"
+           y="323.50775"
+           id="tspan5656">46px</tspan><tspan
+           sodipodi:role="line"
+           x="326.8739"
+           y="376.84113"
+           id="tspan5658">50.3% dilation</tspan></text>
+    </g>
+    <g
+       id="g5715"
+       transform="translate(22.80537,-14.576647)">
+      <g
+         id="g5534"
+         transform="translate(6.5565109e-7,224.57665)">
+        <circle
+           cx="100"
+           cy="320"
+           r="99.52607"
+           fill="#ffffff"
+           id="circle5501"
+           style="stroke:#000000;stroke-width:0.947862" />
+        <circle
+           cx="100"
+           cy="320"
+           r="56.5"
+           fill="#c9c9f0"
+           id="circle5503"
+           style="stroke-width:0.882812" />
+        <circle
+           style="opacity:0.83;fill:#000000;stroke:#000000;stroke-width:0.296375"
+           id="circle5505"
+           cx="100"
+           cy="320"
+           r="37.35181" />
+      </g>
+      <text
+         xml:space="preserve"
+         style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;text-anchor:middle;opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+         x="321.86053"
+         y="505.51529"
+         id="text5662"><tspan
+           sodipodi:role="line"
+           id="tspan5660"
+           x="321.86053"
+           y="505.51529">9mm pupil</tspan><tspan
+           sodipodi:role="line"
+           x="321.86053"
+           y="558.84863"
+           id="tspan5664">75px</tspan><tspan
+           sodipodi:role="line"
+           x="321.86053"
+           y="612.18201"
+           id="tspan5666">100%dialation</tspan></text>
+    </g>
+  </g>
+  <text
+     xml:space="preserve"
+     id="text5668"
+     style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;white-space:pre;shape-inside:url(#rect5670);opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+     transform="translate(-22.80537)" />
+  <text
+     xml:space="preserve"
+     id="text5674"
+     style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;white-space:pre;shape-inside:url(#rect5676);opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+     transform="translate(-22.80537)" />
+  <text
+     xml:space="preserve"
+     id="text5680"
+     style="font-size:42.6667px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;white-space:pre;shape-inside:url(#rect5682);opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.2"
+     transform="translate(-22.80537)" />
+  <text
+     xml:space="preserve"
+     style="font-size:24.9727px;font-family:FreeSerif;-inkscape-font-specification:FreeSerif;text-align:center;text-anchor:middle;opacity:0.83;fill:#000000;stroke:#1a1a1a;stroke-width:0.11708"
+     x="224.83099"
+     y="660.68506"
+     id="text5749"><tspan
+       sodipodi:role="line"
+       id="tspan5747"
+       x="224.83099"
+       y="660.68506"
+       style="stroke-width:0.11708">*Pupil reference chart showing dialation </tspan><tspan
+       sodipodi:role="line"
+       x="224.83099"
+       y="691.90094"
+       style="stroke-width:0.11708"
+       id="tspan5751">range on a normalized cutter ete 200x200px</tspan></text>
+  <metadata
+     id="metadata5769">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Orbit Eye</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

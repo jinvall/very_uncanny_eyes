@@ -8,13 +8,6 @@ namespace uncanny {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
-
-// Head micro-motion frequencies (Hz).
-constexpr std::array<float, 5> kHeadWaveFreqs{0.33F, 0.41F, 0.5F, 0.62F, 0.73F};
-// Head micro-motion amplitudes (unitless, sum to 1.0).
-constexpr std::array<float, 5> kHeadWaveAmplitudes{0.1F, 0.15F, 0.2F, 0.25F, 0.3F};
-
 }  // namespace
 
 float DrowsinessModel::clampUnit(float value) const {
@@ -31,7 +24,6 @@ void DrowsinessModel::reset() {
     state_ = DrowsinessState{};
     state_.drowsiness = clampUnit(config_.baseline);
     randomState_ = 0x9E3779B9U;
-    headPhase_ = 0.0F;
     scheduleNextEvent(0);
 }
 
@@ -65,26 +57,6 @@ void DrowsinessModel::update(std::uint64_t nowUs) {
     lastUpdateUs_ = nowUs;
 
     updateDrowsiness(nowUs, elapsedUs);
-
-    // Irregular head micro-motion: sum of incommensurate sine waves.
-    {
-        const float dt = static_cast<float>(elapsedUs) / 1'000'000.0F;
-        headPhase_ += dt;
-        const float d = state_.drowsiness;
-        const float instability = config_.headInstability * (0.5F + 0.5F * d);
-        float pitch = 0.0F, yaw = 0.0F, roll = 0.0F;
-        for (int i = 0; i < 5; ++i) {
-            const float phase = headPhase_ * kHeadWaveFreqs[i] * 2.0F * static_cast<float>(kPi);
-            const float s = std::sin(phase);
-            const float amp = kHeadWaveAmplitudes[i] * config_.headBobAmount;
-            pitch += s * amp * (0.8F + 0.2F * static_cast<float>(i));
-            yaw  += std::sin(phase * 1.7F + 1.3F) * amp * 0.6F;
-            roll += std::sin(phase * 0.6F + 2.1F) * amp * 0.4F;
-        }
-        state_.headPitch = pitch * (0.3F + 0.7F * d) + instability * d * 3.0F;
-        state_.headYaw  = yaw  * (0.3F + 0.7F * d);
-        state_.headRoll = roll * (0.3F + 0.7F * d);
-    }
 
     // Gaze wander: slow random walk scaled by drowsiness.
     {
@@ -139,64 +111,85 @@ void DrowsinessModel::triggerEvent(std::uint64_t nowUs) {
     if (roll < microSleepProb) {
         // Micro-sleep event
         state_.currentEvent = DrowsinessEvent::MicroSleep;
+        // A deeper nod-off lasts longer: the window stretches with drowsiness
+        // instead of every micro-sleep being the same length.
         const float dur = randomFloat(config_.microSleepDurationMin,
-                                      config_.microSleepDurationMax);
+                                      config_.microSleepDurationMax) *
+                          (0.8F + 0.8F * d);
         state_.eventStartTimeUs = nowUs;
         state_.eventDurationUs = static_cast<std::uint64_t>(dur * 1'000'000);
         state_.microSleepActive = true;
-        state_.dropStrength = 0.3F + 0.7F * d;
-        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax);
-        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax);
+        state_.escalated = true;  // already a nod-off
+        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * (0.4F + 0.6F * d));
+        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * (0.4F + 0.6F * d));
         state_.leftLidSpeed = randomFloat(0.7F, 1.3F);
         state_.rightLidSpeed = randomFloat(0.7F, 1.3F);
         state_.closureDelayUs = static_cast<std::int64_t>(
-            randomFloat(0.0F, config_.lidLeadMax) * 1'000'000); // NOLINT
+            randomFloat(0.0F, config_.lidLeadMax * (0.4F + 0.6F * d)) * 1'000'000); // NOLINT
 
     } else if (roll < microSleepProb + config_.partialDroopProbability * (1.0F - d)) {
         // Partial droop (incomplete blink)
         state_.currentEvent = DrowsinessEvent::PartialDroop;
-        const float dur = randomFloat(config_.blinkDurationMin * 0.6F,
-                                      config_.blinkDurationMax * 0.8F);
         state_.eventStartTimeUs = nowUs;
-        state_.eventDurationUs = static_cast<std::uint64_t>(dur * 1'000'000); // NOLINT
         state_.blinkActive = true;
         state_.blinkClosure = 0.0F;
-        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * 0.5F);
-        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * 0.5F);
+        state_.blinkCloseFraction = randomFloat(0.4F, 0.55F);
+        state_.blinkHoldUs = 0;
+        state_.escalated = false;
+        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * (0.4F + 0.6F * d) * 0.5F);
+        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * (0.4F + 0.6F * d) * 0.5F);
         state_.leftLidSpeed = randomFloat(0.8F, 1.2F);
         state_.rightLidSpeed = randomFloat(0.8F, 1.2F);
-
-    } else if (roll < microSleepProb + config_.partialDroopProbability * (1.0F - d) + 0.15F * d) {
-        // Long (sleepy) blink
-        state_.currentEvent = DrowsinessEvent::LongBlink;
-        const float durMin = config_.sleepyBlinkDurationMin +
-            (config_.blinkDurationMin - config_.sleepyBlinkDurationMin) * (1.0F - d);
-        const float durMax = config_.sleepyBlinkDurationMax +
-            (config_.blinkDurationMax - config_.sleepyBlinkDurationMax) * (1.0F - d);
-        const float dur = randomFloat(durMin, durMax);
-        state_.eventStartTimeUs = nowUs;
-        state_.eventDurationUs = static_cast<std::uint64_t>(dur * 1'000'000); // NOLINT
-        state_.blinkActive = true;
-        state_.blinkClosure = 0.0F;
-        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax);
-        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax);
-        state_.leftLidSpeed = randomFloat(0.7F, 1.3F);
-        state_.rightLidSpeed = randomFloat(0.7F, 1.3F);
+        state_.eventDurationUs = static_cast<std::uint64_t>(
+            blinkDurationSeconds(state_.blinkCloseFraction, 0.0F) * 1'000'000);
 
     } else {
-        // Normal blink
-        state_.currentEvent = DrowsinessEvent::NormalBlink;
-        const float dur = randomFloat(config_.blinkDurationMin,
-                                      config_.blinkDurationMax);
+        // Normal or long blink. Both may hold fully closed before opening --
+        // and holding shut past the nod-off threshold escalates into a
+        // micro-sleep, so a blink is where nod-offs actually come from.
+        const bool longBlink = roll < microSleepProb +
+            config_.partialDroopProbability * (1.0F - d) + 0.15F * d;
+        state_.currentEvent = longBlink ? DrowsinessEvent::LongBlink
+                                        : DrowsinessEvent::NormalBlink;
         state_.eventStartTimeUs = nowUs;
-        state_.eventDurationUs = static_cast<std::uint64_t>(dur * 1'000'000); // NOLINT
         state_.blinkActive = true;
         state_.blinkClosure = 0.0F;
-        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * 0.5F);
-        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * 0.5F);
-        state_.leftLidSpeed = randomFloat(0.9F, 1.1F);
-        state_.rightLidSpeed = randomFloat(0.9F, 1.1F);
+        state_.blinkCloseFraction = randomFloat(0.35F, 0.5F);
+        // Whether this blink holds shut at all rises steeply with drowsiness,
+        // and when it does, how long it holds rises too: a brief pause at low
+        // drowsiness, a long hold (and the nod-off) at high.
+        const float holdWanted = randomFloat() < (0.12F + 0.5F * d);
+        state_.blinkHoldUs = holdWanted
+            ? static_cast<std::uint64_t>(randomFloat(0.06F, 0.06F + 0.5F * d) * 1'000'000)
+            : 0;
+        state_.escalated = false;
+        state_.leftLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * (0.4F + 0.6F * d));
+        state_.rightLidOffset = randomFloat(0.0F, config_.lidAsymmetryMax * (0.4F + 0.6F * d));
+        state_.leftLidSpeed = randomFloat(0.7F, 1.3F);
+        state_.rightLidSpeed = randomFloat(0.7F, 1.3F);
+        state_.closureDelayUs = static_cast<std::int64_t>(
+            randomFloat(0.0F, config_.lidLeadMax * (0.4F + 0.6F * d)) * 1'000'000); // NOLINT
+        // Close fast, open slower, with the closed hold inserted between them.
+        state_.eventDurationUs = static_cast<std::uint64_t>(
+            blinkDurationSeconds(state_.blinkCloseFraction,
+                                 state_.blinkHoldUs / 1'000'000.0F) * 1'000'000);
     }
+}
+
+// Total blink duration in seconds for a given close fraction and closed-hold.
+// The closing phase takes `closeFraction` of the moving time; the opening phase
+// is deliberately slower than the closing phase, the way real lids move.
+float DrowsinessModel::blinkDurationSeconds(float closeFraction,
+                                            float holdSeconds) {
+    const float d = state_.drowsiness;
+    const float moving = std::max(0.2F, closeFraction + (1.0F - closeFraction) * 0.45F);
+    const float durationMin = std::max(
+        0.05F, (config_.blinkDurationMin +
+                (config_.sleepyBlinkDurationMin - config_.blinkDurationMin) * d) / moving);
+    const float durationMax = std::max(
+        durationMin, (config_.blinkDurationMax +
+                      (config_.sleepyBlinkDurationMax - config_.blinkDurationMax) * d) / moving);
+    return randomFloat(durationMin, durationMax) + holdSeconds;
 }
 
 void DrowsinessModel::updateEvent(std::uint64_t nowUs) {
@@ -212,15 +205,57 @@ void DrowsinessModel::updateEvent(std::uint64_t nowUs) {
         case DrowsinessEvent::NormalBlink:
         case DrowsinessEvent::LongBlink:
         case DrowsinessEvent::PartialDroop: {
-            const float eased = 3.0F * progress * progress -
-                                2.0F * progress * progress * progress;
-            state_.blinkClosure = eased;
+            const float closeFraction = std::clamp(state_.blinkCloseFraction, 0.1F, 0.8F);
+            const float holdFraction = state_.eventDurationUs > 0
+                ? static_cast<float>(state_.blinkHoldUs) /
+                  static_cast<float>(state_.eventDurationUs)
+                : 0.0F;
+            const float openStart = std::min(1.0F, closeFraction + holdFraction);
+            if (progress < closeFraction) {
+                const float t = closeFraction > 0.0F ? progress / closeFraction : 1.0F;
+                const float eased = 3.0F * t * t - 2.0F * t * t * t;
+                state_.blinkClosure = eased;
+            } else if (progress < openStart) {
+                // Closed: the lids hold shut for a moment before opening.
+                state_.blinkClosure = 1.0F;
+            } else {
+                const float span = std::max(1e-4F, 1.0F - openStart);
+                const float t = std::clamp((progress - openStart) / span, 0.0F, 1.0F);
+                const float eased = 3.0F * t * t - 2.0F * t * t * t;
+                state_.blinkClosure = 1.0F - eased;
+            }
             state_.blinkLeftClosure = clampUnit(
-                eased * (1.0F + state_.leftLidOffset) * state_.leftLidSpeed);
+                state_.blinkClosure * (1.0F + state_.leftLidOffset) * state_.leftLidSpeed);
             state_.blinkRightClosure = clampUnit(
-                eased * (1.0F + state_.rightLidOffset) * state_.rightLidSpeed);
-            if (state_.currentEvent == DrowsinessEvent::LongBlink) {
-                state_.headPitch -= eased * config_.headDropAmount * 0.3F;
+                state_.blinkClosure * (1.0F + state_.rightLidOffset) * state_.rightLidSpeed);
+
+            // Escalation: held shut long enough and this blink has become a
+            // nod-off. The event is re-issued as a micro-sleep starting now, so
+            // the lids simply stay down and the sleep sequence takes over. The
+            // check is bounded to the hold phase itself, so an event that has
+            // already finished opening can never escalate.
+            if (!state_.escalated && state_.blinkHoldUs > 0) {
+                const std::uint64_t closeUs = static_cast<std::uint64_t>(
+                    static_cast<float>(state_.eventDurationUs) * closeFraction);
+                const std::uint64_t holdEndUs = closeUs + state_.blinkHoldUs;
+                const std::uint64_t heldUs = elapsed > closeUs ? elapsed - closeUs : 0;
+                if (elapsed <= holdEndUs && heldUs >= static_cast<std::uint64_t>(
+                        config_.nodOffHoldSeconds * 1'000'000.0F)) {
+                    state_.escalated = true;
+                    state_.currentEvent = DrowsinessEvent::MicroSleep;
+                    state_.microSleepActive = true;
+                    state_.blinkClosure = 1.0F;
+                    state_.blinkLeftClosure = 1.0F;
+                    state_.blinkRightClosure = 1.0F;
+                    const float dur =
+                        randomFloat(config_.microSleepDurationMin,
+                                    config_.microSleepDurationMax) *
+                        (0.8F + 0.8F * state_.drowsiness);
+                    state_.eventStartTimeUs = nowUs;
+                    state_.eventDurationUs = static_cast<std::uint64_t>(dur * 1'000'000);
+                    state_.sleepProgress = 0.0F;
+                    break;
+                }
             }
             if (progress >= 1.0F) {
                 endEvent(nowUs);
@@ -233,15 +268,12 @@ void DrowsinessModel::updateEvent(std::uint64_t nowUs) {
             if (progress < 0.3F) {
                 const float p = progress / 0.3F;
                 const float eased = 3.0F * p * p - 2.0F * p * p * p;
-                state_.headPitch -= eased * config_.headDropAmount * state_.dropStrength;
                 state_.blinkClosure = eased;
             } else if (progress < sleepEnd) {
-                state_.headPitch -= config_.headDropAmount * state_.dropStrength;
                 state_.blinkClosure = 1.0F;
             } else {
                 const float p = (progress - sleepEnd) / (1.0F - sleepEnd);
                 const float eased = 3.0F * p * p - 2.0F * p * p * p;
-                state_.headPitch += eased * config_.headDropAmount * state_.dropStrength;
                 state_.blinkClosure = 1.0F - eased;
                 if (progress >= 1.0F) {
                     state_.currentEvent = DrowsinessEvent::SleepRecovery;
@@ -262,11 +294,21 @@ void DrowsinessModel::updateEvent(std::uint64_t nowUs) {
 
         case DrowsinessEvent::SleepRecovery: {
             state_.recoveryProgress = progress;
-            if (state_.attentionDirection != 0.0F) {
-                state_.gazeWander += state_.attentionDirection * progress * 0.5F;
-            }
             if (progress >= 1.0F) {
-                endEvent(nowUs);
+                // A nod-off that rolled an attention check glazes sideways
+                // before ordinary wandering resumes -- the "did anybody
+                // notice" look. The gaze choreography itself lives in the
+                // animator, which owns the gaze.
+                if (state_.attentionDirection != 0.0F) {
+                    state_.currentEvent = DrowsinessEvent::AttentionCheck;
+                    state_.attentionCheckActive = true;
+                    state_.attentionProgress = 0.0F;
+                    state_.eventStartTimeUs = nowUs;
+                    state_.eventDurationUs = static_cast<std::uint64_t>(
+                        config_.attentionCheckDuration * 1'000'000);
+                } else {
+                    endEvent(nowUs);
+                }
             }
             break;
         }
@@ -293,8 +335,8 @@ void DrowsinessModel::endEvent(std::uint64_t nowUs) {
     state_.blinkClosure = 0.0F;
     state_.blinkLeftClosure = 0.0F;
     state_.blinkRightClosure = 0.0F;
-    state_.headPitch = 0.0F;
-    state_.dropStrength = 0.0F;
+    state_.blinkHoldUs = 0;
+    state_.escalated = false;
     scheduleNextEvent(nowUs);
 }
 

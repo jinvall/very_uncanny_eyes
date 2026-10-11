@@ -77,18 +77,27 @@ fibres visibly step.
 
 **The strip is a normalised radial axis, re-stretched every frame.** Its height
 is *not* the pupil diameter and is not captured at any particular dilation.
-`src/eye.cpp` collapses to:
+`src/eye.cpp` now uses the calibrated ratio model:
 
-```
-irisThreshold = (128 * (1023 - irisScale) + 512) / 1024   // 0..128
-irisScaleFixed = IRIS_MAP_HEIGHT * 65536 / irisThreshold
-row = (polar & 0x7f) * irisScaleFixed / 65536
-     = d * IRIS_MAP_HEIGHT / irisThreshold
+```cpp
+// The pupil radius is derived from:
+// pupilRatio = Rmin + D * (Rmax - Rmin)
+// pupilRadius = limbusDiameter * pupilRatio / 2
+// where D is the normalized dilation (0..1)
+
+// The iris threshold maps back into the existing polar sampling:
+irisThreshold = clamp(irisRadius - pupilRadius_pixels, 0, irisRadius * 2)
 ```
 
-`irisThreshold` is the normaliser: the strip is scaled to span whatever the
-current iris radius happens to be. Changing pupil size stretches the texture; it
-never samples a different one.
+The pupil boundary is now derived from:
+1. **Eye calibration** (`EyeCalibration` in `src/eye.h`): limbus diameter, Rmin/Rmax ratios, fixed center
+2. **Normalized dilation** (0..1): from LDR sensor or other input
+3. **Existing polar sampling**: iris/sclera cutoff at the calibrated boundary
+
+At minimum dilation (D=0), the pupil uses Rmin. At maximum dilation (D=1), it
+uses Rmax. The threshold calculation converts the calibrated pupil radius into
+the threshold value the polar sampler understands, preserving the existing
+render path.
 
 **The pupil is not in your strip — it is the hole in `sclera.png`.** Pixels with
 `d >= irisThreshold` fall back to sclera:
@@ -98,8 +107,8 @@ if (distance < irisThreshold) { source = iris[...]; }
 else                         { source = sclera[...]; }
 ```
 
-At `irisScale=1023` the threshold reaches 0, no iris is drawn at all, and the
-whole iris window shows sclera. That baked hole **is** the fully dilated pupil.
+The calibrated pupil boundary determines the cutoff, so the sclera show-through
+remains the pupil shape — just now with a properly constrained ratio.
 
 > **So: do not put a black pupil hole in `iris.png`.** Row `H-1` is the pupil
 > edge only at the fully constricted extreme. The strip should carry
@@ -155,30 +164,36 @@ desktop SDL with no flash constraint, so take the full 128.
 ## 3.1 Shaped pupils — `EyeArtwork::pupilShape`
 
 Because `pupilMap.png` cannot express one (above), shaped pupils are a renderer
-feature. Two fields were added at the **end** of `EyeArtwork` in `src/eye.h`:
+feature. Two fields are used at the **end** of `EyeArtwork` in `src/eye.h`:
 
 ```cpp
 int    pupilShape = 0;   // 0 = round (default), 1 = vertical slit, 2 = horizontal
 double slitRatio  = 0.0; // short semi-axis as a fraction of the long one
+EyeCalibration pupilGeometry{}; // limbus diameter, Rmin/Rmax, center
 ```
 
 They are default-initialised, so every `artwork_*.cpp` that lists fewer members
 keeps the previous round-pupil behaviour untouched. A variant opts in by
-appending the two values after `irisMax`:
+appending the values after `irisMax`:
 
 ```cpp
     120,
     720,
     1,      // vertical slit
     0.26,   // short/long ratio
+    EyeCalibration{100.0F, 0.12F, 0.42F, 100.0F, 100.0F},  // pupilGeometry
 };
 ```
 
 How it works in `src/eye.cpp`: the iris still spans the polar circle out to
 `irisThreshold`, but the **pupil test is replaced outright** rather than added
-to — the pupil ellipse's long axis is set to the round-pupil radius
-`(127 - irisThreshold)/128 * irisRadius`, so a slit occupies the same overall
-size as the round pupil it replaces and widens as the eye dilates.
+to — the pupil ellipse's long axis is set to the calibrated radius derived from
+the pupil-to-limbus ratio model, so a slit occupies the same overall size as the
+round pupil it replaces and widens as the eye dilates.
+
+The calibrated pupil boundary is computed via:
+- `pupilRadiusFromCalibration()` — derives pupil radius from dilation and EyeCalibration
+- `dilationToPupilRatio()` — interpolates Rmin to Rmax based on normalized dilation
 
 Two traps, both hit during implementation:
 
@@ -345,7 +360,60 @@ picks one. Only relevant if you port this back to Arduino.
 - [ ] `IRIS_SIZE` even, and `<= SCLERA_SIZE`
 - [ ] `tablegen` printed dimensions match the intent
 - [ ] `EyeArtwork::irisMin`/`irisMax` set to the intended animation range
+- [ ] `EyeArtwork::pupilGeometry` calibrated for this eye (limbus diameter, Rmin/Rmax)
 - [ ] registered in `artwork.h` + `artwork_registry.cpp` + `CMakeLists.txt`
 - [ ] reachable from the TUI automatically (it reads `--list-designs`; just restart it)
 - [ ] rendered at `--design <name>` and eyeballed at rest, mid-blink, and at
-      both horizontal gaze extremes
+    both horizontal gaze extremes
+
+---
+
+## 10. Eye calibration — normalized pupil-to-limbus ratio model
+
+### 10.1 Calibration data
+
+Every `EyeArtwork` now carries an `EyeCalibration` struct that defines the
+eye-specific geometry used by the ratio-based pupil model:
+
+```cpp
+struct EyeCalibration {
+    float limbusDiameter = 100.0F;  // eye-specific diameter in normalized canvas units (200x200)
+    float pupilRatioMin = 0.12F;   // Rmin for D = 0.0
+    float pupilRatioMax = 0.42F;   // Rmax for D = 1.0
+    float pupilCenterX = 100.0F;   // fixed center
+    float pupilCenterY = 100.0F;   // fixed center
+};
+```
+
+### 10.2 Normalized ratio model
+
+The pupil boundary is computed as:
+
+```text
+D = clamp(dilation, 0.0, 1.0)
+pupilRatio   = Rmin + D × (Rmax - Rmin)
+pupilDiameter = limbusDiameter × pupilRatio
+pupilRadius   = pupilDiameter / 2
+```
+
+- `D` is the normalized dilation from LDR sensor or other input (0.0 = fully
+  constricted, 1.0 = fully dilated)
+- `limbusDiameter` provides the absolute scale
+- `pupilRatioMin`/`pupilRatioMax` bound the pupil-to-limbus ratio
+- The fixed center `(100, 100)` is invariant under all dilation states
+
+### 10.3 Separation of concerns
+
+- **Source artwork** (this document): provides `limbusDiameter`, `Rmin`, `Rmax`
+- **LDR sensor** (`LDRSerialInput.cpp`): provides normalized dilation (0.0 → 1.0)
+- **Runtime renderer** (`eye.cpp`): combines them to compute the pupil boundary,
+  then uses the existing polar sampling path
+
+### 10.4 Integration point
+
+The `EyeCalibration` is a field of `EyeArtwork` and is applied during animation
+in `EyeAnimator::update()`, which computes `pupilRadius` via
+`pupilRadiusFromCalibration()` and passes it through `RenderInput` to the
+renderer. The renderer keeps its existing polar iris/sclera reveal path — only
+the cutoff boundary changes from the raw `irisScale` threshold to the calibrated
+ratio-derived radius.

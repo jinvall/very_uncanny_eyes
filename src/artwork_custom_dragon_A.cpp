@@ -22,6 +22,8 @@ const EyeArtwork kCustomDragonEyeA{
     IRIS_HEIGHT,
     IRIS_MIN,
     IRIS_MAX,
+        0, 0.0,  // pupilShape, slitRatio (defaults)
+    EyeCalibration{100.0F, 0.12F, 0.42F, 100.0F, 100.0F}  // pupilGeometry
 };
 
 }  // namespace

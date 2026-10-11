@@ -32,6 +32,8 @@ const EyeArtwork kColdBlueEye{
     IRIS_HEIGHT,
     120,
     720,
+        0, 0.0,  // pupilShape, slitRatio (defaults)
+    EyeCalibration{100.0F, 0.12F, 0.42F, 100.0F, 100.0F}  // pupilGeometry
 };
 
 }  // namespace

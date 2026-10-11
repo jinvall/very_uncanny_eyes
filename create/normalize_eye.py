@@ -408,21 +408,13 @@ def despeckle(rgb, cx, cy, rmax, blown):
 
 
 def build_plate(rgb, cx, cy, size, limbus_r_src, limbus_r_plate, eyeball_r_src,
-                bg_angs=None, bg_stops=None):
+                bg_angs=None, bg_stops=None, no_sclera=False):
     """Radial resample of the eyeball into a `size` square plate.
 
-    The eyeball is scaled so its limbus lands at `limbus_r_plate`, and the
-    sclera margin beyond it is SYNTHESISED. That synthesis is unavoidable: a
-    tightly cropped photo has almost no sclera, but a 200px plate with the
-    limbus at 40px needs sclera out to 100px.
-
-    Two approaches were tried and rejected:
-      * repeating the outermost ring radially -- turns every sclera vein into
-        an infinite spoke;
-      * mirroring about the eyeball boundary -- leaves a visible fold ring.
-    What works is blending into a flat median sclera colour over a short radial
-    ramp. The lid maps cover the periphery anyway, and real sclera at that
-    radius is close to uniform.
+    For normal eye photos we synthesize the extra sclera margin required to make
+    a 200px plate look like a full eye. For a true no-sclera input, however,
+    the iris already occupies the visible plate and there is no fictional
+    sclera to invent: keep the source footprint intact instead of flattening it.
     """
     H, W, _ = rgb.shape
     k = limbus_r_src / limbus_r_plate          # source px per plate px
@@ -448,6 +440,9 @@ def build_plate(rgb, cx, cy, size, limbus_r_src, limbus_r_plate, eyeball_r_src,
     sx = np.clip((cx + rs * np.cos(theta)).round().astype(int), 0, W - 1)
     sy = np.clip((cy + rs * np.sin(theta)).round().astype(int), 0, H - 1)
     out = rgb[sy, sx].astype(float)
+
+    if no_sclera:
+        return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
 
     # Median colour of the sclera, for the synthesised margin only.
     angs = np.linspace(0, 2 * math.pi, 720, endpoint=False)
@@ -570,11 +565,21 @@ def main():
     pupil_r, plateau, ref = find_pupil_radius(prof, rmax)
     if pupil_r is None:
         raise SystemExit("could not find a pupil/iris boundary in the radial profile")
-    limbus_r, peak_r, sclera_level, _ = find_limbus(prof, pupil_r, rmax)
+
     bg_angs, bg_stops, bg_rgb = find_background_radius(
-        rgb, pupil_cx, pupil_cy, (pupil_r + limbus_r) / 2.0)
+        rgb, pupil_cx, pupil_cy, (pupil_r + max(8, int(0.35 * rmax))) / 2.0)
     eyeball_r = float(np.median(bg_stops))
     bg_luma = float(np.mean(bg_rgb))
+
+    no_visible_sclera = False
+    try:
+        limbus_r, peak_r, sclera_level, _ = find_limbus(prof, pupil_r, rmax)
+    except SystemExit:
+        no_visible_sclera = True
+        limbus_r = max(pupil_r + 8, min(rmax - 4, int(round(eyeball_r * 0.9))))
+        peak_r = max(pupil_r + 4, int(round(limbus_r * 0.75)))
+        sclera_level = 255.0
+        print("  ! no visible sclera detected; preserving source iris footprint instead of inventing a fake sclera")
 
     # Sanity checks -- these catch a mis-detected geometry before it silently
     # produces a variant that renders wrong.
@@ -599,13 +604,16 @@ def main():
 
     # IRIS_SIZE is the polar table side and must match the limbus as it appears in
     # the PLATE, or the iris texture bleeds into the sclera as the eye dilates.
-    if args.framing == "eyeball":
+    if no_visible_sclera:
+        limbus_r_plate = float(eyeball_r)
+        iris_size = args.sclera_size
+    elif args.framing == "eyeball":
         # The eyeball itself is the plate: its edge maps to the plate half-width.
         limbus_r_plate = limbus_r * (args.sclera_size / 2.0) / eyeball_r
+        iris_size = int(round(2 * limbus_r_plate))
     else:
         limbus_r_plate = float(args.limbus_radius)
-
-    iris_size = int(round(2 * limbus_r_plate))
+        iris_size = int(round(2 * limbus_r_plate))
     if iris_size % 2:
         iris_size += 1
     if iris_size > args.sclera_size:
@@ -656,7 +664,7 @@ def main():
 
     sclera = build_plate(src, src_c[0], src_c[1], args.sclera_size,
                          limbus_r, limbus_r_plate, eyeball_r,
-                         bg_angs, bg_stops)
+                         bg_angs, bg_stops, no_sclera=no_visible_sclera)
     iris = unroll_iris(src, src_c[0], src_c[1],
                        pupil_r, limbus_r, args.iris_w, args.iris_h)
 

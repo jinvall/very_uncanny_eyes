@@ -16,6 +16,10 @@ constexpr std::size_t kReadBufferSize = 4096;
 constexpr int kReadPollTimeoutMs = 100;
 constexpr int kReconnectDelayMs = 1000;
 
+// Longest line the parser will accept. Anything longer is discarded whole
+// rather than truncated, because a truncated tail parses as a valid number.
+constexpr std::size_t kMaxLineLength = 64;
+
 std::uint64_t monotonicMicroseconds() {
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
@@ -77,19 +81,32 @@ void LDRSerialInput::update() {
 
     const std::uint64_t nowUs = monotonicMicroseconds();
     const LDRSerialSample current = snapshot();
-    const bool connected = readerConnected_.load(std::memory_order_acquire);
-    if (!connected && current.connected && !current.timedOut) {
-        const std::uint64_t elapsed = nowUs >= current.lastValidUpdateUs
-                                          ? nowUs - current.lastValidUpdateUs
-                                          : 0;
-        if (elapsed > config_.disconnectTimeoutUs) {
-            LDRSerialSample timedOut = current;
-            timedOut.connected = false;
-            timedOut.timedOut = true;
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                sample_ = std::move(timedOut);
-            }
+    if (!current.connected || current.timedOut) {
+        return;
+    }
+
+    // The hold window only starts once a real reading has been seen. Before
+    // that there is no published state to hold, and timing out would drop a
+    // device that has only just been opened.
+    //
+    // Note this deliberately does not require the reader to have disconnected:
+    // the documented behaviour is that a device which is connected but has gone
+    // silent releases the environmental modifier after the hold window. Gating
+    // this on the reader being down meant that case never fired at all.
+    if (current.lastValidUpdateUs == 0) {
+        return;
+    }
+
+    const std::uint64_t elapsed = nowUs >= current.lastValidUpdateUs
+                                      ? nowUs - current.lastValidUpdateUs
+                                      : 0;
+    if (elapsed > config_.disconnectTimeoutUs) {
+        LDRSerialSample timedOut = current;
+        timedOut.connected = false;
+        timedOut.timedOut = true;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sample_ = std::move(timedOut);
         }
     }
 }
@@ -281,14 +298,19 @@ bool LDRSerialInput::readAvailable() {
         const char character = buffer[static_cast<std::size_t>(index)];
         if (character == '\n') {
             std::int64_t value = 0;
-            if (parseLine(pendingLine_, value)) {
+            if (!pendingLineOverflow_ && parseLine(pendingLine_, value)) {
                 publishValue(value, monotonicMicroseconds());
             }
             pendingLine_.clear();
+            pendingLineOverflow_ = false;
         } else if (character != '\r' && character != '\0') {
             pendingLine_.push_back(character);
-            if (pendingLine_.size() > 64) {
+            if (pendingLine_.size() > kMaxLineLength) {
+                // Keep consuming to the newline but stop accumulating: the
+                // remainder of the line is still arriving and would otherwise
+                // be re-interpreted as the start of the next reading.
                 pendingLine_.clear();
+                pendingLineOverflow_ = true;
             }
         }
     }

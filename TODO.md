@@ -1,146 +1,151 @@
-# TODO — Three-Phase Build Plan for the Next Eye-System Revision
+# TODO — implementation sequence for the pupil-to-limbus ratio fix
 
-This task list is designed for an agentic coding agent. It is intentionally organized around execution dependencies and implementation flow rather than a strict monotonic phase list.
+This task list is ordered for the actual implementation path that is required by the live renderer. It is intentionally restricted to the smallest change that makes the current renderer obey the normalized pupil-to-limbus model without replacing the polar iris shader path.
 
-## Phase 1: Foundation and mode architecture
+## 1. Establish the normalized center and eye geometry
 
-### A1. Define the runtime mode model
-- Update the mode registry so that `normal`, `dozing`, `suspicious`, and `angry` are explicit first-class states.
-- Add configuration and state transitions for each mode in the animation layer.
-- Keep the current dozing implementation as the baseline while building the larger behavior model.
-- Files likely involved: `src/main.cpp`, `src/eye.h`, `src/eye.cpp`, `src/DrowsinessModel.h`
+### 1.1 Define the fixed eye center
+- Add the explicit runtime contract that the normalized eye center is always `(100, 100)` for the 200×200 plate.
+- Preserve the current generated-art convention that re-centers the source image on the pupil midpoint.
+- Why: the renderer is already centered on the iris disc; the ratio model must not introduce drift as the pupil changes size.
+- Files: `src/eye.h`, `src/eye.cpp`, `create/normalize_eye.py`
+- Proof: tests confirm center invariance at all dilation states.
 
-### A2. Split renderer input from renderer logic
-- Convert the render pipeline so it consumes a defined input set instead of implicit state.
-- Add separate inputs for gaze, lid state, pupil target, head tilt, and expression blend.
-- Keep renderer code deterministic and test-friendly.
-- Files likely involved: `src/eye.cpp`, `src/eye.h`
+### 1.2 Capture eye-specific limbus geometry
+- Add a per-eye calibration record holding the eye-specific limbus diameter and the fixed center.
+- Keep limbus geometry out of the LDR or sensor path.
+- Why: `pupilDiameter = limbusDiameter × pupilRatio` must be scale-aware, but the input source is still only normalized dilation.
+- Files: `src/eye.h`, `src/eye.cpp`, `src/main.cpp`
+- Proof: cross-eye proportionality tests pass with different limbus diameters at the same dilation.
 
-### A3. Build the expression profile abstraction
-- Introduce an expression/profile object that carries:
-  - iris behavior
-  - pupil behavior
-  - gaze pattern
-  - blink rhythm
-  - eyelid posture
-  - agitation / alertness blend
-- Make the system extensible for future realism settings without hardcoding branch logic in `main.cpp`.
-- Files likely involved: `src/eye.h`, `src/eye.cpp`, `src/main.cpp`
+## 2. Separate normalized dilation from geometry
 
-### A4. Stabilize the dozing baseline
-- Confirm the existing dozing behavior remains valid after the refactor.
-- Tune the default baseline and recovery to avoid the near-invisible dozing state seen when the system is freshly booted.
-- Files likely involved: `src/DrowsinessModel.cpp`, `src/DrowsinessModel.h`, `src/eye.cpp`
+### 2.1 Keep normalized dilation as a separate signal
+- Leave `PupilResponseModel` as the layer that converts light to normalized pupil target values in `[0.0, 1.0]`.
+- Do not fold the LDR or sensor mapping into the eye geometry.
+- Why: the geometry is calibrated for the eye, not for the sensor.
+- Files: `src/PupilResponseModel.h`, `src/PupilResponseModel.cpp`, `src/LDRSerialInput.cpp`
+- Proof: LDR input still feeds normalization, while per-eye calibration remains independent.
 
-### A5. Protect large generated asset files from manual edits
-- Treat generated eye headers as build artifacts, not hand-edited source.
-- Document the generation path and keep all source art separate from generated output.
-- Add a warning in the build docs: large generated tables are expected and should be regenerated rather than edited directly.
-- Files likely involved: `create/EYE_ASSET_SPEC.md`, `src/generated/`, `Uncanny_Eyes/convert/`
+### 2.2 Introduce the ratio calibration contract
+- Add `Rmin` and `Rmax` to the eye calibration layer as the minimum and maximum pupil-to-limbus ratios.
+- Why: the normalized dilation must map to a ratio before any pixel scale is applied.
+- Files: `src/eye.h`, `src/eye.cpp`
+- Proof: `D = 0.0 => pupilRatio = Rmin`, `D = 1.0 => pupilRatio = Rmax`.
 
----
+## 3. Implement the pupil-to-limbus interpolation
 
-## Phase 2: Realistic eye system and pupil mapping
+### 3.1 Add the exact interpolation formula
+- Implement:
 
-### B1. Replace the old eyeball assumptions with the normalized 200x200 eye pipeline
-- Define the new target eye model: normalized eyeball plate, deterministic pupil detection, and a screen-space render path.
-- Keep the old system working only as a compatibility layer until the new model is validated.
-- Files likely involved: `create/EYE_ASSET_SPEC.md`, `src/eye.cpp`, any future asset-generation scripts
+```text
+D = clamp(dilation, 0.0, 1.0)
+pupilRatio = Rmin + D × (Rmax - Rmin)
+```
 
-### B2. Implement the crosshair-based non-round pupil detection
-- Use the black crosshair marker rather than a dot so narrow slitted pupils remain valid when the pupil is constricted.
-- Compute pupil center and radius deterministically from the normalized marker.
-- Ensure the result works for mammalian, reptilian, cat, and goat-like pupil shapes.
-- Files likely involved: `src/eye.cpp`, future generation scripts, asset definitions
+- Why: this preserves the normalized dilation model and makes the ratio independent of arbitrary pixel units.
+- Files: `src/eye.h`, `src/eye.cpp`
+- Proof: midpoint and clamp tests pass.
 
-### B3. Add exact pupil mapping and dilation model
-- Build a precise pupil response model that tightens the relationship between light, dilation, and rendering.
-- Incorporate constraints for constriction speed, recovery speed, hysteresis, and repeatable adaptation.
-- Ensure that the response is not a simple raw ADC pass-through.
-- Files likely involved: `src/LDRSerialInput.h`, `src/LDRSerialInput.cpp`, `src/PupilResponseModel.*`, `src/eye.cpp`
+### 3.2 Convert ratio to pupil diameter and radius
+- Compute:
 
-### B4. Add realism settings: iris type, pupil type, expression type
-- Create a profile-driven system for:
-  - iris style
-  - pupil geometry
-  - expression mood
-  - realism level
-- Make the profile system abstract enough to avoid requiring new renderer branches for each new eye type.
-- Files likely involved: `src/eye.h`, `src/eye.cpp`, `src/main.cpp`
+```text
+pupilDiameter = limbusDiameter × pupilRatio
+pupilRadius = pupilDiameter / 2
+```
 
-### B5. Validate slitted-pupil behavior under edge conditions
-- Test narrowest dilation states and ensure the pupil remains bounded by the actual pupil geometry.
-- Check for edge failures that cause the pupil to render outside the visible dark region.
-- Add a targeted regression suite or smoke-test checks for these edge states.
-- Files likely involved: `src/eye.cpp`, `tests/`, `README.md`
+- Why: the final pupil boundary must be an eye-specific geometric quantity, not a raw art value.
+- Files: `src/eye.h`, `src/eye.cpp`
+- Proof: proportionality tests across two eye sizes pass.
 
----
+## 4. Rebind the existing polar renderer to the calibrated boundary
 
-## Phase 3: Display, streaming, and operator polish
+### 4.1 Replace the raw `irisScale` threshold logic with calibrated radius logic
+- Preserve the existing polar iris + sclera fallback path, but derive the actual cutoff radius from the calibrated `pupilRadius`.
+- Why: the renderer already knows how to reveal sclera when the iris stops; it simply needs the mathematically correct pupil boundary.
+- Files: `src/eye.cpp`, `src/eye.h`
+- Proof: render output remains stable while pupil geometry tracks the normalized ratio model.
 
-### C1. Lock the output to the borderless 16:9 stream-friendly mode
-- Keep the output shape fixed to 16:9 and borderless for a low-light remote-display environment.
-- Remove any needless decoration or desktop bleed from the window composition.
-- Files likely involved: `src/main.cpp`, `README.md`, `rtsp_server.py`
+### 4.2 Keep the current texture mapping and artifact pipeline intact
+- Do not replace the generated iris strip or remove the polar lookup.
+- Why: the asset generation is still valid; only the pupil boundary needs to be normalized.
+- Files: `src/eye.cpp`, `create/EYE_ASSET_SPEC.md`
+- Proof: image output still uses the existing artwork, only the pupil cutoff changes.
 
-### C2. Verify the RTSP/VLC pipeline end-to-end
-- Re-test the remote stream path with the new eye output and ensure it stays stable when the app restarts.
-- Confirm the capture window logic continues to target only the eye window and not the broader desktop.
-- Files likely involved: `rtsp_server.py`, `run_rtsp.sh`, `README.md`
+## 5. Add validation tests
 
-### C3. Add runtime tuning for light response and expressions
-- Expose tuning parameters for LDR sensitivity, pupil response, and expression intensity.
-- Ensure the TUI can pass these values without rebuilding the binary.
-- Files likely involved: `src/main.cpp`, `uncanny-tui.py`, `README.md`
+### 5.1 Add minimum / midpoint / maximum dilation tests
+- Validate all three canonical states.
+- Why: the model is only valid if it behaves at the bounds and midpoint exactly.
+- Files: `tests/` or the smallest unit-test target in the project
+- Proof: explicit assertions for the three expected ratio values.
 
-### C4. Expand the operator TUI for mode switching and calibration
-- Make the TUI a real control surface for:
-  - mode selection
-  - design / profile selection
-  - light calibration status
-  - stream status
-  - runtime warnings
-- Files likely involved: `uncanny-tui.py`
+### 5.2 Add clamp and center tests
+- Test `D < 0`, `D > 1`, and fixed center `(100,100)`.
+- Why: the renderer must remain stable outside nominal input ranges and center invariant.
+- Files: `tests/`
+- Proof: clamp and center assertions pass.
 
-### C5. Production hardening and visual validation
-- Validate the system under live conditions with a real LDR input and remote display.
-- Check transition smoothness between normal, dozing, suspicious, and angry states.
-- Add a final visual regression pass and document any remaining caveats.
-- Files likely involved: `README.md`, `STATE.md`, `BUILD_ROADMAP.md`, `BUILDPLAN.md`
+### 5.3 Add cross-eye proportionality tests
+- Use two calibration objects with different `limbusDiameter` values but identical `Rmin`, `Rmax`.
+- Why: the ratio model must preserve proportionality across eyes, even when pixel diameter differs.
+- Files: `tests/`
+- Proof: `PupilA / L_A == PupilB / L_B` at the same dilation.
 
----
+## 6. Visual validation and migration
 
-## Cross-cutting tasks
+### 6.1 Run visual smoke tests for the existing eye assets
+- Validate minimum dilation, mid dilation, and maximum dilation on each shipped eye asset.
+- Why: the ratio model needs to work across existing generated eyes without rewriting the art pipeline.
+- Files: `src/eye.cpp`, `tests/`, `README.md`
+- Proof: no asset breaks visually and the pupil remains centered.
 
-### X1. Audit generated eye data sizes and generator churn
-- The project currently has very large generated headers (~16k lines each).
-- Build a generation strategy that minimizes churn and keeps the source-of-truth assets small and editable.
-- Files likely involved: `src/generated/`, `Uncanny_Eyes/convert/`, `create/`
+### 6.2 Remove obsolete assumptions from the implementation notes
+- Update notes and docs so they describe ratio-based pupil geometry instead of hidden raw threshold scaling.
+- Why: the ambiguity is the actual bug; documentation must match the implementation path.
+- Files: `BUILDPLAN.md`, `TODO.md`, `create/EYE_ASSET_SPEC.md`
+- Proof: the build plan and source docs agree on the exact final model.
 
-### X2. Add a validation harness for new eye assets
-- Build a smoke-test plus visual regression harness for each eye configuration.
-- Verify the renderer still produces RGB channels, correct pupil bounds, and no stale data.
-- Files likely involved: `src/main.cpp`, `tests/`, `create/`
+## 7. Final verification checklist
 
-### X3. Keep documentation aligned with implementation reality
-- Ensure the docs reflect the actual architecture, especially the new mode system and the normalized eye pipeline.
-- Update examples and launch commands so they match the runtime behavior.
-- Files likely involved: `README.md`, `ARCHITECTURE.md`, `STATE.md`, `BUILD_ROADMAP.md`, `BUILDPLAN.md`
+- `D = 0.0` yields `pupilRatio = Rmin`
+- `D = 0.5` yields the midpoint ratio
+- `D = 1.0` yields `pupilRatio = Rmax`
+- clamp behavior remains correct
+- eye center remains `(100,100)`
+- pupil never leaves the calibrated boundary
+- current renderer still uses the polar iris/sclera reveal path
+- no render-time code is added that draws a separate black circle apart from the iris cutoff
 
----
+## 8. Implementation order summary
 
-## Execution order for an agentic workflow
+1. Establish fixed center and limbus calibration.
+2. Keep normalized dilation separate from eye calibration.
+3. Add `Rmin` / `Rmax` interpolation.
+4. Compute `pupilDiameter` and `pupilRadius` from `limbusDiameter` and ratio.
+5. Bind the calibrated radius back into the existing polar iris cutoff.
+6. Validate clamp, midpoint, max, and center invariance.
+7. Validate cross-eye proportionality.
+8. Run visual smoke tests across existing eye assets.
+9. Update plan and documentation to match the final implementation.
 
-The agent should execute in this dependency order, though not every task is strictly sequential:
+## 9. Files involved in the fix
 
-1. Define the mode/profile model.
-2. Refactor the renderer input contract.
-3. Stabilize dozing and normal behavior.
-4. Implement the normalized eye asset pipeline and pupil mapping.
-5. Tighten LDR-to-pupil response calibration.
-6. Add suspicious/angry modes and expression profiles.
-7. Validate the RTSP stream and 16:9 display.
-8. Improve TUI controls and runtime calibration.
-9. Run final visual regression and documentation pass.
+- `src/eye.h`
+- `src/eye.cpp`
+- `src/PupilResponseModel.h`
+- `src/PupilResponseModel.cpp`
+- `src/LDRSerialInput.cpp`
+- `src/main.cpp`
+- `tests/`
+- `BUILDPLAN.md`
+- `TODO.md`
 
-This order reduces rework: architecture first, realistic eye behavior second, operator polish third.
+## 10. Files not involved in the geometry fix
+
+- `create/normalize_eye.py` remains the source-art measurement tool
+- `create/EYE_ASSET_SPEC.md` remains an asset contract document
+- the generated polar tables remain the existing art representation
+- the LDR sensor normalization stays a separate input layer
+- the project does not add a new black pupil layer or replace the iris renderer architecture

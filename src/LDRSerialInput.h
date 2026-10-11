@@ -77,6 +77,11 @@ private:
     mutable std::mutex mutex_;
     LDRSerialSample sample_;
     std::string pendingLine_;
+    // Set when a line exceeds the parser's line limit. Without it, discarding
+    // the buffer mid-line leaves the tail of the over-long line still in the
+    // buffer, and that tail is itself a syntactically valid integer -- so a
+    // single garbage line would be published as a huge bogus reading.
+    bool pendingLineOverflow_ = false;
 };
 
 }  // namespace uncanny

@@ -6,12 +6,15 @@ namespace uncanny {
 //
 // Replaces the simple sine-wave dozing mode with a physiological state
 // machine that produces: gradual eyelid droop, asymmetric eyelid movement,
-// variable blink timing/closure speed, intermittent micro-sleeps, head
+// variable blink timing/closure speed, intermittent micro-sleeps, gaze
 // instability, and post-recovery lateral checking gaze.
 //
 // The model is frame-rate independent and runs entirely from elapsed time.
 // All events generate their own parameters at trigger time — nothing is
 // a fixed, repeatable animation loop.
+//
+// There is no head in this project: the display window is a headless mount,
+// so the model produces no head pose (no roll/pitch/yaw/bob/drop) of any kind.
 struct DrowsinessConfig {
     bool enabled = true;
     // Starting drowsiness level (0.0 = alert, 1.0 = fighting sleep).
@@ -37,13 +40,6 @@ struct DrowsinessConfig {
     // ── Partial droop events ──────────────────────────────────────
     // Probability of a partial droop (incomplete closure) per blink.
     float partialDroopProbability = 0.15F;
-    // ── Head motion ───────────────────────────────────────────────
-    // Base irregular head micro-motion amplitude (coordinate units).
-    float headBobAmount = 0.06F;
-    // Additional head drop amplitude during micro-sleep events.
-    float headDropAmount = 0.22F;
-    // Base instability — increases with drowsiness.
-    float headInstability = 0.04F;
     // ── Micro-sleep ───────────────────────────────────────────────
     // Per-second probability at drowsiness = 0.
     float microSleepProbBase = 0.0008F;
@@ -60,8 +56,13 @@ struct DrowsinessConfig {
     // ── Asymmetry ─────────────────────────────────────────────────
     // Maximum difference between left/right eyelid closure (0..1).
     float lidAsymmetryMax = 0.12F;
-    // Maximum time offset between left/right lid start (seconds).
+    // Maximum time offset between left and right lid start (seconds).
     float lidLeadMax = 0.05F;
+    // ── Blink closed-hold and nod-off escalation ──────────────────
+    // A blink that holds fully closed for at least this long escalates into a
+    // micro-sleep (the nod-off): the lids stay down, the eye sleeps, and the
+    // recovery sequence follows.
+    float nodOffHoldSeconds = 0.35F;
 };
 enum class DrowsinessEvent {
     None,
@@ -88,7 +89,6 @@ struct DrowsinessState {
     float blinkRightClosure = 0.0F;
     // ── Micro-sleep state ─────────────────────────────────────────
     bool microSleepActive = false;
-    float dropStrength = 0.0F;          // 0..1 head drop depth
     float sleepProgress = 0.0F;         // 0..1 event progress
     // ── Recovery state ────────────────────────────────────────────
     bool recoveryActive = false;
@@ -97,10 +97,6 @@ struct DrowsinessState {
     bool attentionCheckActive = false;
     float attentionDirection = 0.0F;    // -1 = left, +1 = right
     float attentionProgress = 0.0F;      // 0..1
-    // ── Head state (coordinate units, relative to center) ─────────
-    float headPitch = 0.0F;             // vertical tilt
-    float headYaw = 0.0F;               // horizontal rotation
-    float headRoll = 0.0F;              // roll
     // ── Gaze wander (coordinate units) ────────────────────────────
     float gazeWander = 0.0F;
     // ── Per-event generated parameters ────────────────────────────
@@ -109,6 +105,12 @@ struct DrowsinessState {
     float leftLidSpeed = 1.0F;          // multiplier on closure speed
     float rightLidSpeed = 1.0F;         // multiplier on closure speed
     std::int64_t closureDelayUs = 0;    // delay between left and right lid start
+    // Blink phase split. A fatigued blink closes, HOLDS shut for a moment, and
+    // then opens; holding shut past the nod-off threshold escalates the blink
+    // into a micro-sleep.
+    float blinkCloseFraction = 0.45F;   // fraction of the event spent closing
+    std::uint64_t blinkHoldUs = 0;      // time spent fully closed
+    bool escalated = false;             // already became a micro-sleep
 };
 class DrowsinessModel {
 public:
@@ -128,9 +130,6 @@ public:
     float eyelidDroop() const;
     float leftEyelidPosition() const;   // 0.0 = open, 1.0 = closed
     float rightEyelidPosition() const;
-    float headPitch() const { return state_.headPitch; }
-    float headYaw() const { return state_.headYaw; }
-    float headRoll() const { return state_.headRoll; }
     float gazeWander() const { return state_.gazeWander; }
 private:
     void updateDrowsiness(std::uint64_t nowUs, std::uint64_t elapsedUs);
@@ -140,20 +139,15 @@ private:
     void endEvent(std::uint64_t nowUs);
     float randomFloat();
     float randomFloat(float min, float max);
+    // Total blink duration (seconds) including the closed hold, given the
+    // close fraction of the moving time. Consumes a random draw, so it is not
+    // const.
+    float blinkDurationSeconds(float closeFraction, float holdSeconds);
     float clampUnit(float value) const;
     DrowsinessConfig config_;
     DrowsinessState state_;
     std::uint32_t randomState_;
     // Frame-rate independence.
     std::uint64_t lastUpdateUs_ = 0;
-    // Irregular head motion — uses a small set of sine waves with
-    // different periods to avoid a clean, recognizable bob.
-    static constexpr float kHeadWaveFreqs[5] = {
-        0.73F, 1.31F, 2.17F, 3.49F, 5.03F
-    };
-    static constexpr float kHeadWaveAmplitudes[5] = {
-        0.30F, 0.22F, 0.15F, 0.10F, 0.07F
-    };
-    float headPhase_ = 0.0F;
 };
 }  // namespace uncanny
